@@ -71,10 +71,10 @@ def run_syncronous(opts, files):
     
 def enum_with_filename(f):
     if f == 'stdin':
-        enum = enumerate(sys.stdin)
+        enum = enumerate(sys.stdin, 1)
     else:
         f = os.path.abspath(f)
-        enum = enumerate(open(f,'r'))
+        enum = enumerate(open(f,'r'), 1)
     for i, line in enum:
         yield (line.strip(), f, i)
         
