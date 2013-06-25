@@ -5,6 +5,7 @@ Created on Jun 19, 2013
 '''
 import os
 import sys
+import gzip
 import pytz
 import redis
 import socket
@@ -74,7 +75,11 @@ def enum_with_filename(f):
         enum = enumerate(sys.stdin, 1)
     else:
         f = os.path.abspath(f)
-        enum = enumerate(open(f,'r'), 1)
+        if f.endswith('.gz'):
+            fh = gzip.open(f, 'rb')
+        else:
+            fh = open(f, 'r')
+        enum = enumerate(fh, 1)
     for i, line in enum:
         yield (line.strip(), f, i)
         
