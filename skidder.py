@@ -108,8 +108,12 @@ def main(opts, files):
         for w in workers:
             w.start()
             
-        # push log events onto the queu.e
-        for event in events(files):
+        # push log events onto the queue
+        events_iter = events(files)
+        if opts.limit:
+            events_iter = itertools.islice(events_iter, opts.limit)
+            
+        for event in events_iter:
             Q.put(event)
         
         # add poison pills 
@@ -131,6 +135,7 @@ if __name__ == '__main__':
     op.add_option('-g','--tag', dest="tags", action="append", default=[])
     op.add_option('-r','--redis', dest="redis", action="store", default="localhost:6379/0")
     op.add_option('-k','--key', dest="key", action="store")
+    op.add_option('-l','--limit', dest="limit", action="store", type=int)
     op.add_option('-d','--debug', dest="debug", action="store_true", default=False)
     opts, args = op.parse_args() 
     
