@@ -4,6 +4,7 @@ Created on Jun 19, 2013
 @author: jluker
 '''
 import os
+import re
 import sys
 import gzip
 import pytz
@@ -66,7 +67,7 @@ class Worker(Process):
   
 def run_syncronous(opts, files):
     rc = redis_connection(opts.redis)
-    for event in events(files):
+    for event in events(files, opts):
         payload = generate_payload(event, opts.type, opts.tags, opts.source_host)
         rc.rpush(opts.key, json.dumps(payload))
     
@@ -81,20 +82,45 @@ def enum_with_filename(f):
             fh = open(f, 'r')
         enum = enumerate(fh, 1)
     for i, line in enum:
-        yield (line.strip(), f, i)
+        yield (line.rstrip(), f, i)
         
-def events(files):
+def events(files, opts):
     if '-' in files:
         if len(files) > 1:
             log.warn("cannot read from both stdin and files")
         log.info("generating input from stdin")
-        return enum_with_filename('stdin')
-    inputs = []
-    for f in files:
-        log.info("generating input from %s" % f)
-        inputs.append(enum_with_filename(f))
-    return itertools.chain.from_iterable(inputs)
-        
+        event_iter = enum_with_filename('stdin')
+    else:
+        inputs = []
+        for f in files:
+            log.info("generating input from %s" % f)
+            inputs.append(enum_with_filename(f))
+        event_iter = itertools.chain.from_iterable(inputs)
+    if opts.multiline:
+        return multiline_events(event_iter, opts)
+    return event_iter
+    
+def merge_events(events):
+    if not len(events) > 1: 
+        return events[0]
+    msg, source, lineno = events[0]
+    for e in events[1:]:
+        msg += "\n%s" % e[0]
+    return msg, source, lineno
+    
+def multiline_events(event_iter, opts):
+    pending = []
+    multiline_match = re.compile(opts.multiline)
+
+    for event in event_iter:
+        match = multiline_match.search(event[0])
+        match = (match and not opts.multiline_negate) or (not match and opts.multiline_negate)
+        if match:
+            if pending:
+                yield merge_events(pending)
+                pending = []
+        pending.append(event)
+    
 def main(opts, files):
     
     if opts.threads == 1:
@@ -109,7 +135,7 @@ def main(opts, files):
             w.start()
             
         # push log events onto the queue
-        events_iter = events(files)
+        events_iter = events(files, opts)
         if opts.limit:
             events_iter = itertools.islice(events_iter, opts.limit)
             
@@ -136,6 +162,8 @@ if __name__ == '__main__':
     op.add_option('-r','--redis', dest="redis", action="store", default="localhost:6379/0")
     op.add_option('-k','--key', dest="key", action="store")
     op.add_option('-l','--limit', dest="limit", action="store", type=int)
+    op.add_option('-m','--multiline', dest="multiline", action="store")
+    op.add_option('-N','--multiline_negate', dest="multiline_negate", action="store_true")
     op.add_option('-d','--debug', dest="debug", action="store_true", default=False)
     opts, args = op.parse_args() 
     
